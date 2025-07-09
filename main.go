@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"container/heap"
+	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,22 +35,46 @@ func (fs feedSpec) String() string {
 }
 
 type BlogEntry struct {
-	Id      string
-	Title   string
-	Updated int64
+	Id      string `json:"id"`
+	Title   string `json:"title"`
+	Updated int64  `json:"updated"`
 }
 
 func (entry BlogEntry) String() string {
 	return fmt.Sprintf("{%s (%s) @ %d}", entry.Title, entry.Id, entry.Updated)
 }
 
+type LocalFeeds struct {
+	Fetched int64       `json:"fetched"`
+	Feeds   []*BlogFeed `json:"feeds"`
+}
+
+func (lf LocalFeeds) getById(id string) *BlogFeed {
+	for _, feed := range lf.Feeds {
+		if feed.Id == id {
+			return feed
+		}
+	}
+	return nil
+}
+
 type BlogFeed struct {
-	Url     string
-	Spec    feedSpec
-	Raw     []byte
-	Title   string
-	Id      string
-	Entries []*BlogEntry
+	Url     string       `json:"url"`
+	Spec    feedSpec     `json:"-"`
+	Raw     []byte       `json:"-"`
+	Title   string       `json:"title"`
+	Id      string       `json:"id"`
+	Entries []*BlogEntry `json:"entries"`
+}
+
+func (bf *BlogFeed) hasPost(target *BlogEntry) bool {
+	for _, post := range bf.Entries {
+		if post.Id == target.Id {
+			// todo this is strange
+			return target.Updated <= post.Updated
+		}
+	}
+	return false
 }
 
 func (bf BlogFeed) String() string {
@@ -100,16 +126,16 @@ func (bf *BlogFeed) pushOrUpdate(entry *BlogEntry) {
 	heap.Push(bf, entry)
 }
 
-func readBlogRoll(path string) ([]BlogFeed, error) {
+func readBlogRoll(path string) ([]*BlogFeed, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	feeds := make([]BlogFeed, 0, 10)
+	feeds := make([]*BlogFeed, 0, 10)
 	for line := range strings.Lines(string(raw)) {
 		trimmed := strings.TrimSpace(line)
-		feed := BlogFeed{
+		feed := &BlogFeed{
 			Url: trimmed,
 			Id:  trimmed,
 		}
@@ -120,35 +146,12 @@ func readBlogRoll(path string) ([]BlogFeed, error) {
 	return feeds, nil
 }
 
-var staticRoll = []string{
-	"res/rockorager.xml",
-	"res/matklad.xml",
-	"res/openmymind.xml",
-	"res/andrewrk.xml",
-}
-
-func blogRollStatic() ([]BlogFeed, error) {
-
-	res := make([]BlogFeed, len(staticRoll))
-
-	for i, path := range staticRoll {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			fatal("reading static blogroll", err)
-		}
-		res[i] = BlogFeed{
-			Raw: raw,
-			Id:  path,
-		}
-	}
-
-	return res, nil
-}
-
 type Options struct {
-	blogRoll  string
-	localData string
-	command   string
+	clean      bool
+	blogRoll   string
+	localData  string
+	notifyFile string
+	command    string
 }
 
 func parseArgs() Options {
@@ -162,14 +165,17 @@ func parseArgs() Options {
 		fatal("reading cache dir", err)
 		os.Exit(1)
 	}
-	blogRoll := config + "/badrss/blogroll"
 
-	localData := cache + "/badrss_feeds.json"
+	blogRoll := config + "/badrss/blogroll"
+	localData := cache + "/badrss/feeds.json"
+	notifyFile := cache + "/badrss/notify"
 
 	res := Options{}
 
 	flag.StringVar(&res.blogRoll, "blogroll", blogRoll, "path to blogroll file")
 	flag.StringVar(&res.localData, "localdata", localData, "full path where feed records are stored")
+	flag.StringVar(&res.notifyFile, "notify", notifyFile, "full path where feed records are stored")
+	flag.BoolVar(&res.clean, "clean", false, "clear local cache")
 
 	flag.Parse()
 
@@ -182,6 +188,35 @@ func fatal(msg string, err error) {
 	fmt.Fprintf(os.Stderr, "error %s: %s", msg, err)
 }
 
+func diffFeeds(localFeeds LocalFeeds, remoteFeeds []*BlogFeed) []*BlogFeed {
+	var updatedFeeds []*BlogFeed = nil
+	for _, remote := range remoteFeeds {
+		local := localFeeds.getById(remote.Id)
+		if local != nil {
+			var newPosts []*BlogEntry = nil
+
+			for _, post := range remote.Entries {
+				if !local.hasPost(post) {
+					newPosts = append(newPosts, post)
+				}
+			}
+
+			if newPosts != nil {
+				updatedFeeds = append(updatedFeeds, &BlogFeed{
+					Entries: newPosts,
+					Title:   remote.Title,
+					Url:     remote.Url,
+				})
+			}
+		} else {
+			// whole feed is new
+			updatedFeeds = append(updatedFeeds, remote)
+		}
+	}
+
+	return updatedFeeds
+}
+
 func main() {
 
 	options := parseArgs()
@@ -191,9 +226,7 @@ func main() {
 		fatal("reading blogroll", err)
 	}
 
-	// should read local and the blogroll config and then merge them
-	for i, feed := range feeds {
-		slog.Info("fetching", "url", feed.Url)
+	for _, feed := range feeds {
 		res, err := http.Get(feed.Url)
 		if err != nil {
 			slog.Error("fetching", "err", err, "url", feed.Url)
@@ -204,22 +237,64 @@ func main() {
 		if err != nil {
 			slog.Error("reading body", "err", err, "url", feed.Url)
 		} else {
-			feeds[i].Raw = rawXml
+			feed.Raw = rawXml
 		}
 	}
 
-	if err != nil {
-		fmt.Println("error")
-		return
-	}
-
-	for i := range feeds {
-		parseFeed(&feeds[i])
-	}
-
 	for _, feed := range feeds {
-		fmt.Println(feed)
+		parseFeed(feed)
 	}
+
+	if options.clean {
+		err = os.Remove(options.localData)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing cache file(%s): %s", options.localData, err)
+		}
+		err = os.Remove(options.notifyFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyFile, err)
+		}
+	}
+
+	rawLocal, err := os.ReadFile(options.localData)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		fatal("reading stored", err)
+	}
+	local := LocalFeeds{}
+	json.Unmarshal(rawLocal, &local)
+
+	newPosts := diffFeeds(local, feeds)
+	if len(newPosts) > 0 {
+		notifyFile, err := os.Create(options.notifyFile)
+		if err != nil {
+			fatal("unable to open notifyFile", err)
+		}
+		defer notifyFile.Close()
+
+		notifyFile.WriteString("new posts:\n")
+		builder := strings.Builder{}
+		for _, feed := range newPosts {
+			builder.Reset()
+			builder.WriteString(fmt.Sprintf("%s (%s):\n", feed.Title, feed.Url))
+			for _, post := range feed.Entries {
+				t := time.Unix(post.Updated, 0).UTC().Format(time.DateOnly)
+				builder.WriteString(fmt.Sprintf("\t%s @ %s", post.Title, t))
+			}
+			builder.WriteByte('\n')
+
+			notifyFile.WriteString(builder.String())
+		}
+	}
+
+	local = LocalFeeds{
+		Fetched: time.Now().Unix(),
+		Feeds:   feeds,
+	}
+	rawLocal, err = json.Marshal(local)
+	if err != nil {
+		fatal("marshalling local data", err)
+	}
+	os.WriteFile(options.localData, rawLocal, 0644)
 }
 
 type feedContext int
@@ -286,7 +361,6 @@ feedParse:
 					if context == channel || context == feedp {
 						feed.Title = trimmed(token)
 					} else if context == entry {
-						fmt.Println("got post title: ", trimmed(token))
 						post.Title = trimmed(token)
 					}
 				case "link":
@@ -317,7 +391,7 @@ feedParse:
 						if err != nil {
 							slog.Error("time parse", "err", err, "feed", feed.Id, "post", post.Title)
 						} else {
-							post.Updated = ts.Unix()
+							post.Updated = max(ts.Unix(), post.Updated)
 						}
 					}
 				}
@@ -333,7 +407,7 @@ feedParse:
 	}
 
 	if decodeErr != nil && decodeErr != io.EOF {
-		fmt.Println("got decode err", decodeErr)
+		slog.Error("xml decode", "err", decodeErr)
 	}
 }
 

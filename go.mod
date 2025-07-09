@@ -1,3 +1,3 @@
-module github.com/deparr/rss
+module github.com/deparr/badrss
 
 go 1.24.4
