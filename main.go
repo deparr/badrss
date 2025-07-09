@@ -220,11 +220,25 @@ func diffFeeds(localFeeds LocalFeeds, remoteFeeds []*BlogFeed) []*BlogFeed {
 func main() {
 
 	options := parseArgs()
-	fmt.Println(options)
+
+	if options.clean {
+		err := os.Remove(options.localData)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "error removing cache file(%s): %s", options.localData, err)
+		}
+		err = os.Remove(options.notifyFile)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyFile, err)
+		}
+
+		return
+	}
+
 	feeds, err := readBlogRoll(options.blogRoll)
 	if err != nil {
 		fatal("reading blogroll", err)
 	}
+
 
 	for _, feed := range feeds {
 		res, err := http.Get(feed.Url)
@@ -245,16 +259,6 @@ func main() {
 		parseFeed(feed)
 	}
 
-	if options.clean {
-		err = os.Remove(options.localData)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing cache file(%s): %s", options.localData, err)
-		}
-		err = os.Remove(options.notifyFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyFile, err)
-		}
-	}
 
 	rawLocal, err := os.ReadFile(options.localData)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -278,7 +282,7 @@ func main() {
 			builder.WriteString(fmt.Sprintf("%s (%s):\n", feed.Title, feed.Url))
 			for _, post := range feed.Entries {
 				t := time.Unix(post.Updated, 0).UTC().Format(time.DateOnly)
-				builder.WriteString(fmt.Sprintf("\t%s @ %s", post.Title, t))
+				builder.WriteString(fmt.Sprintf("\t%s @ %s\n", post.Title, t))
 			}
 			builder.WriteByte('\n')
 
