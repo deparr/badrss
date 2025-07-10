@@ -24,3 +24,31 @@
   - grab `title`
 
 above is tedious, shoulddecode directly to structs instead
+
+# json format
+
+```json
+{
+    "fetched": time,
+    "feeds": [
+        {
+            "id": string,
+            "title": string,
+            "url": string,
+            "entries": [
+                {
+                    "id": string,
+                    "title": string,
+                    "updated": time
+                }
+            ]
+        }
+    ]
+}
+```
+
+# for notifications
+
+- feeds are fetched once/twice a day
+- notifcations are checked for each hour
+- manual command that spits out the diff immediately??

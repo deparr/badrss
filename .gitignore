@@ -2,6 +2,6 @@ zig-out
 .zig-cache
 *.exe
 *.pdb
-res/
+test/
 badrss
 main
