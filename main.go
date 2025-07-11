@@ -20,6 +20,7 @@ type Options struct {
 	notifyFile string
 	command    string
 }
+var options = Options{}
 
 func parseArgs() Options {
 	config, err := os.UserConfigDir()
@@ -51,7 +52,7 @@ func parseArgs() Options {
 
 func main() {
 
-	options := parseArgs()
+	options = parseArgs()
 
 	switch options.command {
 	case "clean":
