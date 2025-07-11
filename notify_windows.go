@@ -20,8 +20,8 @@ $notifyIcon.BalloonTipTitle = "%s";
 $notifyIcon.BalloonTipText = "%s";
 $notifyIcon.Visible = $true;
 
-$notifyIcon.ShowBalloonTip(3000);
-Start-Sleep -Seconds 4
+$notifyIcon.ShowBalloonTip(5000);
+Start-Sleep -Seconds 6
 $notifyIcon.Dispose()`
 
 // todo don't create the script everytime
