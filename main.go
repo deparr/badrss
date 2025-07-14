@@ -15,11 +15,13 @@ func fatal(msg string, err error) {
 }
 
 type Options struct {
-	blogRoll   string
-	localData  string
-	notifyFile string
-	command    string
+	blogRoll    string
+	feedCache   string
+	notifyCache string
+	noNotify    bool
+	command     string
 }
+
 var options = Options{}
 
 func parseArgs() Options {
@@ -40,8 +42,9 @@ func parseArgs() Options {
 	res := Options{}
 
 	flag.StringVar(&res.blogRoll, "blogroll", blogRoll, "where to find the blogroll file")
-	flag.StringVar(&res.localData, "localdata", localData, "where to store the local feed record")
-	flag.StringVar(&res.notifyFile, "notify", notifyFile, "where to store the notification file")
+	flag.StringVar(&res.feedCache, "feed-cache", localData, "where to store the local feed record")
+	flag.StringVar(&res.notifyCache, "notify-cache", notifyFile, "where to store the notification file")
+	flag.BoolVar(&res.noNotify, "no-notify", false, "do not notify after fetching")
 
 	flag.Parse()
 
@@ -56,38 +59,19 @@ func main() {
 
 	switch options.command {
 	case "clean":
-		err := os.Remove(options.localData)
+		err := os.Remove(options.feedCache)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(os.Stderr, "error removing cache file(%s): %s", options.localData, err)
+			fmt.Fprintf(os.Stderr, "error removing cache file(%s): %s", options.feedCache, err)
 		}
-		err = os.Remove(options.notifyFile)
+		err = os.Remove(options.notifyCache)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyFile, err)
+			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyCache, err)
 		}
 
 		return
-	case "notify":
-		postBytes, err := os.ReadFile(options.notifyFile)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return
-			}
-			fatal("reading notify file", err)
-		}
-
-		summary, body, _ := strings.Cut(string(postBytes), "\n")
-		err = notifySend(summary, body)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error sending notif: %s", err)
-		}
-
-		err = os.Remove(options.notifyFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyFile, err)
-		}
-	case "fetch":
+	case "":
 		fallthrough
-	default:
+	case "fetch":
 		feeds, err := readBlogRoll(options.blogRoll)
 		if err != nil {
 			fatal("reading blogroll", err)
@@ -99,7 +83,7 @@ func main() {
 			parseFeed(feed)
 		}
 
-		rawLocal, err := os.ReadFile(options.localData)
+		rawLocal, err := os.ReadFile(options.feedCache)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			fatal("reading stored", err)
 		}
@@ -108,7 +92,7 @@ func main() {
 
 		newPosts, numNewPosts := diffFeeds(local, feeds)
 		if numNewPosts > 0 {
-			notifyFile, err := os.Create(options.notifyFile)
+			notifyFile, err := os.Create(options.notifyCache)
 			if err != nil {
 				fatal("unable to open notifyFile", err)
 			}
@@ -137,6 +121,33 @@ func main() {
 		if err != nil {
 			fatal("marshalling local data", err)
 		}
-		os.WriteFile(options.localData, rawLocal, 0644)
+		os.WriteFile(options.feedCache, rawLocal, 0644)
+
+		if options.noNotify {
+			return
+		}
+
+		fallthrough
+	case "notify":
+		postBytes, err := os.ReadFile(options.notifyCache)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return
+			}
+			fatal("reading notify file", err)
+		}
+
+		summary, body, _ := strings.Cut(string(postBytes), "\n")
+		err = notifySend(summary, body)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error sending notif: %s", err)
+		}
+
+		err = os.Remove(options.notifyCache)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing notify file(%s): %s", options.notifyCache, err)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: '%s'. Try '--help'.\n", options.command)
 	}
 }
