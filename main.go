@@ -96,7 +96,6 @@ func main() {
 			if err != nil {
 				fatal("unable to open notifyFile", err)
 			}
-			defer notifyFile.Close()
 
 			notifyFile.WriteString(fmt.Sprintf("%d new posts\n", numNewPosts))
 			builder := strings.Builder{}
@@ -111,6 +110,8 @@ func main() {
 
 				notifyFile.WriteString(builder.String())
 			}
+
+			notifyFile.Close()
 		}
 
 		local = LocalFeeds{
