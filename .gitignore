@@ -1,7 +1,9 @@
 zig-out
 .zig-cache
 *.exe
+*.obj
 *.pdb
 test/
 badrss
 main
+res/*.xml

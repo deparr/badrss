@@ -4,14 +4,28 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const main_mod = b.addModule("rss", .{
+    const xml_dep = b.dependency("xml", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const zeit_dep = b.dependency("zeit", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const main_mod = b.addModule("badrss", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
+    main_mod.addImport("xml", xml_dep.module("xml"));
+    main_mod.addImport("zeit", zeit_dep.module("zeit"));
+
+
     const main_exe = b.addExecutable(.{
-        .name = "rss",
+        .name = "badrss",
         .root_module = main_mod,
     });
 
