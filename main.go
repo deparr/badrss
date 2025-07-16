@@ -12,6 +12,7 @@ import (
 
 func fatal(msg string, err error) {
 	fmt.Fprintf(os.Stderr, "error %s: %s", msg, err)
+	os.Exit(1)
 }
 
 type Options struct {
