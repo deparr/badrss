@@ -35,5 +35,7 @@ pub fn build(b: *std.Build) !void {
         b.getInstallStep().dependOn(&main_exe.step);
     } else {
         b.installArtifact(main_exe);
+        const fail = b.addFail("the zig version sucks. use the go one, it actually handles dates and json 'properly'");
+        b.getInstallStep().dependOn(&fail.step);
     }
 }
