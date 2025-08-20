@@ -206,7 +206,7 @@ const (
 
 // TODO decode directly into structs
 func parseFeed(feed *BlogFeed) {
-	const MAX_STORED_ENTRIES = 10
+	const MAX_STORED_ENTRIES = 5
 	dec := xml.NewDecoder(bytes.NewReader(feed.Raw))
 	var (
 		tagIdx   = -1
