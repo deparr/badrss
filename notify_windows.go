@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -12,44 +11,41 @@ import (
 
 var scriptFormat = `Add-Type -AssemblyName System.Windows.Forms;
 Add-Type -AssemblyName System.Drawing;
-
-$ErrorActionPreference= 'silentlycontinue';
+$ErrorActionPreference= "silentlycontinue";
 $notifyIcon = New-Object System.Windows.Forms.NotifyIcon;
 $notifyIcon.Icon = New-Object System.Drawing.Icon("%s") || [System.Drawing.SystemIcons]::Information;
 $notifyIcon.BalloonTipTitle = "%s";
 $notifyIcon.BalloonTipText = "%s";
 $notifyIcon.Visible = $true;
-
 $notifyIcon.ShowBalloonTip(5000);
 Start-Sleep -Seconds 6;
 $notifyIcon.Dispose();`
 
 // todo don't create the script everytime
-func notifySend(summary, body string) error {
+func notifySend(summary, body string) (*exec.Cmd, error) {
 	command, err := exec.LookPath("pwsh")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	config, _ := path.Split(options.blogRoll)
 	iconPath := path.Join(config, "badrss.ico")
-	bodyWithLines := strings.ReplaceAll(body, "\n", "`n")
 
-	script := fmt.Sprintf(scriptFormat,
+	escaper := strings.NewReplacer("\n", "`n", "'", "`'", "\"", "`\"", "`", "``")
+	escapedBody := escaper.Replace(body)
+
+	script := fmt.Sprintf(strings.ReplaceAll(scriptFormat, "\n", " "),
 		iconPath,
 		summary,
-		bodyWithLines,
+		escapedBody,
 	)
 
-	f, err := os.CreateTemp("", "*badrss.ps1")
-	defer os.Remove(f.Name())
-	_, err = f.WriteString(script)
+	cmd := exec.Command(command, "-c", script)
+
+	err = cmd.Start()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	f.Close()
 
-	cmd := exec.Command(command, f.Name())
-
-	return cmd.Run()
+	return cmd, nil
 }

@@ -6,10 +6,10 @@ import (
 	"os/exec"
 )
 
-func notifySend(summary, body string) error {
+func notifySend(summary, body string) (*exec.Cmd, error) {
 	binary, err := exec.LookPath("notify-send")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	args := []string{
@@ -22,6 +22,10 @@ func notifySend(summary, body string) error {
 	}
 
 	command := exec.Command(binary, args...)
+	err = command.Start()
+	if err != nil {
+		return nil, err
+	}
 
-	return command.Run()
+	return command, nil
 }
