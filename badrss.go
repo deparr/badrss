@@ -312,7 +312,7 @@ feedParse:
 	}
 
 	if decodeErr != nil && decodeErr != io.EOF {
-		slog.Error("xml decode", "err", decodeErr)
+		slog.Error("xml decode", "err", decodeErr, "feed", feed.Id)
 	}
 }
 
