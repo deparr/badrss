@@ -19,6 +19,7 @@ type Options struct {
 	blogRoll  string
 	feedCache string
 	command   string
+	quiet     bool
 }
 
 var options = Options{}
@@ -26,7 +27,6 @@ var options = Options{}
 func parseArgs() Options {
 	config, err := os.UserConfigDir()
 	if err != nil {
-		// todo these probably shouldn't exit
 		fatal("reading config dir", err)
 	}
 	cache, err := os.UserCacheDir()
@@ -41,6 +41,7 @@ func parseArgs() Options {
 
 	flag.StringVar(&res.blogRoll, "blogroll", blogRoll, "where to find the blogroll file")
 	flag.StringVar(&res.feedCache, "feed-cache", localData, "where to store the local feed record")
+	flag.BoolVar(&res.quiet, "quiet", false, "silence standard output")
 
 	flag.Parse()
 
@@ -99,6 +100,10 @@ func main() {
 			_, err = notifySend(summary, body)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error notifying: %s", err)
+			}
+
+			if !options.quiet && strings.Count(body, "\n") > 3 {
+				fmt.Print(body)
 			}
 		}
 
