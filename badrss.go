@@ -189,7 +189,7 @@ func diffFeeds(localFeeds LocalFeeds, remoteFeeds []*BlogFeed) ([]*BlogFeed, int
 					Title:   remote.Title,
 					Url:     remote.Url,
 				})
-				numNewPosts += 1
+				numNewPosts += len(newPosts)
 			}
 		} else {
 			// whole feed is new
