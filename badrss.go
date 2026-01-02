@@ -145,28 +145,27 @@ func readBlogRoll(path string) ([]*BlogFeed, error) {
 	return feeds, nil
 }
 
-func fetchRemote(feeds []*BlogFeed) {
-	for _, feed := range feeds {
-		req, err := http.NewRequest("GET", feed.Url, nil)
-		if err != nil {
-			slog.Error("making request", "err", err, "url", feed.Url)
-			continue
-		}
-		req.Header.Set("User-Agent", userAgent)
-
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			slog.Error("fetching", "err", err, "url", feed.Url)
-			continue
-		}
-		rawXml, err := io.ReadAll(res.Body)
-		res.Body.Close()
-		if err != nil {
-			slog.Error("reading body", "err", err, "url", feed.Url)
-		} else {
-			feed.Raw = rawXml
-		}
+func fetchFeed(feed *BlogFeed) {
+	req, err := http.NewRequest("GET", feed.Url, nil)
+	if err != nil {
+		slog.Error("making request", "err", err, "url", feed.Url)
+		return
 	}
+	req.Header.Set("User-Agent", userAgent)
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("fetching", "err", err, "url", feed.Url)
+		return
+	}
+	rawXml, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		slog.Error("reading body", "err", err, "url", feed.Url)
+	} else {
+		feed.Raw = rawXml
+	}
+
 }
 
 func diffFeeds(localFeeds LocalFeeds, remoteFeeds []*BlogFeed) ([]*BlogFeed, int) {
@@ -200,7 +199,6 @@ func diffFeeds(localFeeds LocalFeeds, remoteFeeds []*BlogFeed) ([]*BlogFeed, int
 
 	return updatedFeeds, numNewPosts
 }
-
 
 type feedContext int
 

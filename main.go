@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -68,11 +69,14 @@ func main() {
 			fatal("reading blogroll", err)
 		}
 
-		fetchRemote(feeds)
-
+		var wg sync.WaitGroup
 		for _, feed := range feeds {
-			parseFeed(feed)
+			wg.Go(func() {
+				fetchFeed(feed)
+				parseFeed(feed)
+			})
 		}
+		wg.Wait()
 
 		rawLocal, err := os.ReadFile(options.feedCache)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
