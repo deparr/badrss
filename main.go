@@ -69,6 +69,8 @@ func main() {
 			fatal("reading blogroll", err)
 		}
 
+		// todo probably shouldn't just craete a go routine for each one
+		// oh well, probably wont be a problem, probably
 		var wg sync.WaitGroup
 		for _, feed := range feeds {
 			wg.Go(func() {
@@ -127,6 +129,15 @@ func main() {
 		// 		fmt.Fprintf(os.Stderr, "%s:\n\n%s", proc.String(), err)
 		// 	}
 		// }
+	case "list":
+		blogRollBytes, err := os.ReadFile(options.blogRoll)
+		if err != nil {
+			fatal("reading blogroll", err)
+		}
+		_, err = os.Stdout.Write(blogRollBytes)
+		if err != nil {
+			fatal("writing to stdout", err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: '%s'. Try '--help'.\n", options.command)
 	}
