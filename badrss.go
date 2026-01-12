@@ -134,6 +134,9 @@ func readBlogRoll(path string) ([]*BlogFeed, error) {
 	feeds := make([]*BlogFeed, 0, 10)
 	for line := range strings.Lines(string(raw)) {
 		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
 		feed := &BlogFeed{
 			Url: trimmed,
 			Id:  trimmed,
