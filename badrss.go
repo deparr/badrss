@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -57,10 +58,13 @@ func (lf LocalFeeds) getById(id string) *BlogFeed {
 	return nil
 }
 
+const DEFAULT_ENTRY_LIMIT = 3
+
 type BlogFeed struct {
 	Url     string       `json:"url"`
 	Spec    feedSpec     `json:"-"`
 	Raw     []byte       `json:"-"`
+	Limit   int          `json:"-"`
 	Title   string       `json:"title"`
 	Id      string       `json:"id"`
 	Entries []*BlogEntry `json:"entries"`
@@ -137,9 +141,13 @@ func readBlogRoll(path string) ([]*BlogFeed, error) {
 		if strings.HasPrefix(trimmed, "#") {
 			continue
 		}
+
+		url, limitStr, _ := strings.Cut(trimmed, " ")
+		limit, _ := strconv.Atoi(limitStr)
 		feed := &BlogFeed{
-			Url: trimmed,
-			Id:  trimmed,
+			Url:   url,
+			Id:    url,
+			Limit: max(limit, DEFAULT_ENTRY_LIMIT),
 		}
 
 		feeds = append(feeds, feed)
@@ -216,7 +224,6 @@ const (
 
 // TODO decode directly into structs
 func parseFeed(feed *BlogFeed) {
-	const MAX_STORED_ENTRIES = 3
 	dec := xml.NewDecoder(bytes.NewReader(feed.Raw))
 	var (
 		tagIdx   = -1
@@ -257,16 +264,17 @@ feedParse:
 				post = nil
 			}
 
-			if len(feed.Entries) >= MAX_STORED_ENTRIES {
+			if len(feed.Entries) >= feed.Limit {
 				break feedParse
 			}
 		case xml.CharData:
 			if tagIdx >= 0 {
 				switch tagStack[tagIdx] {
 				case "title":
-					if context == channel || context == feedp {
+					switch context {
+					case channel, feedp:
 						feed.Title = trimmed(token)
-					} else if context == entry {
+					case entry:
 						post.Title = trimmed(token)
 					}
 				case "link":
@@ -276,9 +284,10 @@ feedParse:
 				case "guid":
 					fallthrough
 				case "id":
-					if context == entry {
+					switch context {
+					case entry:
 						post.Id = trimmed(token)
-					} else if context == feedp {
+					case feedp:
 						feed.Id = trimmed(token)
 					}
 				case "pubDate":
