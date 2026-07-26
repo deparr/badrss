@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"container/heap"
+	"encoding/json/v2"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -41,7 +42,9 @@ type BlogEntry struct {
 }
 
 func (entry BlogEntry) String() string {
-	return fmt.Sprintf("{%s (%s) @ %d}", entry.Title, entry.Id, entry.Updated)
+	t := time.Unix(entry.Updated, 0)
+	year, month, day := t.Date()
+	return fmt.Sprintf("%s @ %d-%d-%d", entry.Title, year, month, day)
 }
 
 type LocalFeeds struct {
@@ -57,6 +60,17 @@ func (lf LocalFeeds) getById(id string) *BlogFeed {
 	}
 	return nil
 }
+
+func (lf LocalFeeds) getByUrl(url string) *BlogFeed {
+	for _, feed := range lf.Feeds {
+		if feed.Url == url {
+			return feed
+		}
+	}
+	return nil
+}
+
+
 
 const DEFAULT_ENTRY_LIMIT = 3
 
@@ -153,6 +167,53 @@ func readBlogRoll(path string) ([]*BlogFeed, error) {
 		feeds = append(feeds, feed)
 	}
 
+	return feeds, nil
+}
+
+type BlogMinimal = struct {
+	url     string
+	id      string
+	limit   int
+	skipped bool
+}
+
+func readBlogRollForList(path string) ([]BlogMinimal, error) {
+	blogroll, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	blogs := []BlogMinimal{}
+	for line := range strings.Lines(string(blogroll)) {
+		blog := BlogMinimal{}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			blog.skipped = true
+			trimmed = strings.TrimPrefix(trimmed, "#")
+			trimmed = strings.TrimSpace(trimmed)
+		}
+
+		url, limitStr, _ := strings.Cut(trimmed, " ")
+		limit, _ := strconv.Atoi(limitStr)
+		blog.url = url
+		blog.id = url
+		blog.limit = max(limit, DEFAULT_ENTRY_LIMIT)
+		blogs = append(blogs, blog)
+	}
+
+	return blogs, nil
+}
+
+func readFeedCache(path string) (LocalFeeds, error) {
+	feeds := LocalFeeds{}
+	feedBytes, err := os.ReadFile(path)
+	if err != nil {
+		return feeds, err
+	}
+
+	err = json.Unmarshal(feedBytes, &feeds)
+	if err != nil {
+		return feeds, err
+	}
 	return feeds, nil
 }
 

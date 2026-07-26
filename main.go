@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"net/url"
 )
 
 func fatal(msg string, err error) {
@@ -80,12 +81,10 @@ func main() {
 		}
 		wg.Wait()
 
-		rawLocal, err := os.ReadFile(options.feedCache)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		local, err := readFeedCache(options.feedCache)
+		if err != nil {
 			fatal("reading stored", err)
 		}
-		local := LocalFeeds{}
-		json.Unmarshal(rawLocal, &local)
 
 		newPosts, numNewPosts := diffFeeds(local, feeds)
 
@@ -117,7 +116,7 @@ func main() {
 			Fetched: time.Now().Unix(),
 			Feeds:   feeds,
 		}
-		rawLocal, err = json.Marshal(local)
+		rawLocal, err := json.Marshal(local)
 		if err != nil {
 			fatal("marshalling local data", err)
 		}
@@ -130,14 +129,67 @@ func main() {
 		// 	}
 		// }
 	case "list":
-		blogRollBytes, err := os.ReadFile(options.blogRoll)
+		blogroll, err := os.ReadFile(options.blogRoll)
 		if err != nil {
 			fatal("reading blogroll", err)
 		}
-		_, err = os.Stdout.Write(blogRollBytes)
-		if err != nil {
-			fatal("writing to stdout", err)
+		fmt.Printf("blogroll at '%s':\n", options.blogRoll)
+		for line := range strings.Lines(string(blogroll)) {
+			fmt.Printf(" %s", line)
 		}
+	case "cache":
+		blogroll, err := readBlogRollForList(options.blogRoll)
+		if err != nil {
+			fatal("reading blogroll", err)
+		}
+		local, err := readFeedCache(options.feedCache)
+		if err != nil {
+			fatal("reading stored", err)
+		}
+
+		skipped := &strings.Builder{}
+		used := &strings.Builder{}
+		used.WriteString("Current feeds:\n")
+		skipped.WriteString("Unused feeds:\n")
+
+		targetLen := 0
+		for i, blog := range blogroll {
+			blogUrl, err := url.Parse(blog.url)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error parsing url for %s", blog.url)
+				continue
+			}
+			shortUrl := blogUrl.Hostname()
+			blogroll[i].url = shortUrl
+
+			targetLen = max(targetLen, len(shortUrl))
+		}
+
+		targetLen += 2
+
+		for _, blog := range blogroll {
+			b := used
+			if blog.skipped {
+				b = skipped
+			}
+
+			fmt.Fprintf(b, "%s%s|", blog.url, strings.Repeat(" ", targetLen - len(blog.url)))
+			cached := local.getByUrl(blog.id)
+			if cached == nil {
+				fmt.Fprintln(b, "")
+				continue
+			}
+
+			fmt.Fprintf(b, " %d/%d |", len(cached.Entries), blog.limit)
+			if (len(cached.Entries) > 0) {
+				fmt.Fprintf(b, " %s", cached.Entries[0])
+			}
+
+			b.WriteByte('\n')
+		}
+
+		fmt.Printf("%s\n\n%s", used.String(), skipped.String())
+
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: '%s'. Try '--help'.\n", options.command)
 	}
