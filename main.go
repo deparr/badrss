@@ -188,7 +188,8 @@ func main() {
 			b.WriteByte('\n')
 		}
 
-		fmt.Printf("%s\n\n%s", used.String(), skipped.String())
+		fetchedTime := time.Unix(local.Fetched, 0)
+		fmt.Printf("%s\n\n%s\n\nlast fetch: %s\n", used.String(), skipped.String(), fetchedTime.Format(time.DateTime))
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: '%s'. Try '--help'.\n", options.command)
