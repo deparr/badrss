@@ -5,15 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
-	"net/url"
 )
 
 func fatal(msg string, err error) {
-	fmt.Fprintf(os.Stderr, "error %s: %s", msg, err)
+	fmt.Fprintf(os.Stderr, "error %s: %s\n", msg, err)
 	os.Exit(1)
 }
 
@@ -68,6 +68,11 @@ func main() {
 		feeds, err := readBlogRoll(options.blogRoll)
 		if err != nil {
 			fatal("reading blogroll", err)
+		}
+
+		if len(feeds) == 0 {
+			fmt.Fprintf(os.Stderr, "blogroll '%s' does not exist or is empty\nnothing to fetch\n", options.blogRoll)
+			return
 		}
 
 		// todo probably shouldn't just craete a go routine for each one
@@ -129,14 +134,17 @@ func main() {
 		// 	}
 		// }
 	case "list":
-		blogroll, err := os.ReadFile(options.blogRoll)
+		// todo faded colors for commented feeds
+		blogrollRaw, err := os.ReadFile(options.blogRoll)
 		if err != nil {
 			fatal("reading blogroll", err)
 		}
+		blogroll := strings.TrimSpace(string(blogrollRaw))
 		fmt.Printf("blogroll at '%s':\n", options.blogRoll)
-		for line := range strings.Lines(string(blogroll)) {
+		for line := range strings.Lines(blogroll) {
 			fmt.Printf(" %s", line)
 		}
+		fmt.Println()
 	case "cache":
 		blogroll, err := readBlogRollForList(options.blogRoll)
 		if err != nil {
@@ -149,8 +157,10 @@ func main() {
 
 		skipped := &strings.Builder{}
 		used := &strings.Builder{}
+		stale := &strings.Builder{}
 		used.WriteString("Current feeds:\n")
 		skipped.WriteString("Unused feeds:\n")
+		stale.WriteString("In Cache But Not Blogroll:\n")
 
 		targetLen := 0
 		for i, blog := range blogroll {
@@ -173,7 +183,7 @@ func main() {
 				b = skipped
 			}
 
-			fmt.Fprintf(b, "%s%s|", blog.url, strings.Repeat(" ", targetLen - len(blog.url)))
+			fmt.Fprintf(b, "%s%s|", blog.url, strings.Repeat(" ", targetLen-len(blog.url)))
 			cached := local.getByUrl(blog.id)
 			if cached == nil {
 				fmt.Fprintln(b, "")
@@ -181,15 +191,38 @@ func main() {
 			}
 
 			fmt.Fprintf(b, " %d/%d |", len(cached.Entries), blog.limit)
-			if (len(cached.Entries) > 0) {
+			if len(cached.Entries) > 0 {
 				fmt.Fprintf(b, " %s", cached.Entries[0])
 			}
 
 			b.WriteByte('\n')
 		}
 
+		hasStale := false
+	stalefeeds:
+		for _, feed := range local.Feeds {
+			for _, blog := range blogroll {
+				if feed.Url == blog.id {
+					continue stalefeeds
+				}
+			}
+
+			hasStale = true
+			fmt.Fprintf(stale, "%s%s|", feed.Title, strings.Repeat(" ", max(1, targetLen-len(feed.Url))))
+			fmt.Fprintf(stale, " %d |", len(feed.Entries))
+			if len(feed.Entries) > 0 {
+				fmt.Fprintf(stale, " %s", feed.Entries[0])
+			}
+			stale.WriteByte('\n')
+		}
+
 		fetchedTime := time.Unix(local.Fetched, 0)
-		fmt.Printf("%s\n\n%s\n\nlast fetch: %s\n", used.String(), skipped.String(), fetchedTime.Format(time.DateTime))
+		staleStr := ""
+		if hasStale {
+			staleStr = fmt.Sprintf("%s\n\n", stale.String())
+		}
+		fmt.Printf("%s\n\n%s\n\n%slast fetch: %s\n",
+			used.String(), skipped.String(), staleStr, fetchedTime.Format(time.DateTime))
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: '%s'. Try '--help'.\n", options.command)

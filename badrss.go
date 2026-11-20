@@ -5,6 +5,7 @@ import (
 	"container/heap"
 	"encoding/json/v2"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -69,8 +70,6 @@ func (lf LocalFeeds) getByUrl(url string) *BlogFeed {
 	}
 	return nil
 }
-
-
 
 const DEFAULT_ENTRY_LIMIT = 3
 
@@ -144,12 +143,15 @@ func (bf *BlogFeed) pushOrUpdate(entry *BlogEntry) {
 }
 
 func readBlogRoll(path string) ([]*BlogFeed, error) {
+	feeds := make([]*BlogFeed, 0, 10)
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, os.ErrNotExist) {
+			return feeds, nil
+		}
+		return feeds, err
 	}
 
-	feeds := make([]*BlogFeed, 0, 10)
 	for line := range strings.Lines(string(raw)) {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "#") {
@@ -178,11 +180,15 @@ type BlogMinimal = struct {
 }
 
 func readBlogRollForList(path string) ([]BlogMinimal, error) {
+	blogs := []BlogMinimal{}
+
 	blogroll, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return blogs, nil
+		}
 		return nil, err
 	}
-	blogs := []BlogMinimal{}
 	for line := range strings.Lines(string(blogroll)) {
 		blog := BlogMinimal{}
 		trimmed := strings.TrimSpace(line)
@@ -207,6 +213,9 @@ func readFeedCache(path string) (LocalFeeds, error) {
 	feeds := LocalFeeds{}
 	feedBytes, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return feeds, nil
+		}
 		return feeds, err
 	}
 

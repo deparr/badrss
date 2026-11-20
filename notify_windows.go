@@ -21,7 +21,6 @@ $notifyIcon.ShowBalloonTip(5000);
 Start-Sleep -Seconds 6;
 $notifyIcon.Dispose();`
 
-// todo don't create the script everytime
 func notifySend(summary, body string) (*exec.Cmd, error) {
 	command, err := exec.LookPath("pwsh")
 	if err != nil {
